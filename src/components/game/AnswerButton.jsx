@@ -3,7 +3,8 @@ import { Animated, TouchableOpacity, Text, StyleSheet } from 'react-native'
 import { useResponsive } from '../../hooks/useResponsive'
 
 // state: 'idle' | 'correct' | 'wrong' | 'reveal' | 'dim'
-export default function AnswerButton({ label, state, onPress, disabled }) {
+// compact: true → smaller font + multi-line text (for emoji+word labels)
+export default function AnswerButton({ label, state, onPress, disabled, compact = false }) {
   const r           = useResponsive()
   const shakeAnim   = useRef(new Animated.Value(0)).current
   const scaleAnim   = useRef(new Animated.Value(1)).current
@@ -62,7 +63,7 @@ export default function AnswerButton({ label, state, onPress, disabled }) {
     }
   }, [state])
 
-  const s = styles(r, state)
+  const s = styles(r, state, compact)
 
   return (
     <Animated.View style={{
@@ -76,7 +77,7 @@ export default function AnswerButton({ label, state, onPress, disabled }) {
         disabled={disabled}
         activeOpacity={0.8}
       >
-        <Text style={s.label}>{label}</Text>
+        <Text style={s.label} numberOfLines={compact ? 3 : 1} adjustsFontSizeToFit={!compact}>{label}</Text>
         {state === 'correct' && <Text style={s.badge}>✓</Text>}
         {state === 'wrong'   && <Text style={s.badge}>✗</Text>}
       </TouchableOpacity>
@@ -99,23 +100,24 @@ const TEXT_COLOR = {
   dim:     '#ccc',
 }
 
-const styles = (r, state) => StyleSheet.create({
+const styles = (r, state, compact) => StyleSheet.create({
   btn: {
     backgroundColor: BG[state] ?? '#fff',
     borderRadius: r.sp(16),
-    paddingVertical: r.sp(18),
+    paddingVertical: r.sp(compact ? 12 : 18),
     paddingHorizontal: r.sp(10),
     alignItems: 'center',
     justifyContent: 'center',
     elevation: state === 'correct' || state === 'reveal' ? 6 : 2,
     borderWidth: 2,
     borderColor: state === 'idle' || state === 'dim' ? '#E8E8E8' : 'transparent',
-    minHeight: r.sp(72),
+    minHeight: r.sp(compact ? 64 : 72),
   },
   label: {
-    fontSize: r.font(28),
+    fontSize: r.font(compact ? 17 : 28),
     fontWeight: '800',
     color: TEXT_COLOR[state] ?? '#333',
+    textAlign: 'center',
   },
   badge: {
     position: 'absolute',
