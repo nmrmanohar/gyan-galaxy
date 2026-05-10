@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { storage } from '../utils/storage'
 import { GIRL_THEME } from '../themes/themes'
 
 const STORAGE_KEY = 'gyan_galaxy_state'
@@ -61,14 +61,14 @@ export const useAppStore = create((set, get) => ({
 
   persist: async () => {
     const { profileName, theme, progress, gems, onboardingDone } = get()
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({
+    await storage.setItem(STORAGE_KEY, JSON.stringify({
       profileName, themeId: theme.id, progress, gems, onboardingDone,
     }))
   },
 
   hydrate: async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY)
+      const raw = await storage.getItem(STORAGE_KEY)
       if (!raw) return
       const { profileName, themeId, progress, gems, onboardingDone } = JSON.parse(raw)
       const { THEMES } = require('../themes/themes')
@@ -85,7 +85,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   resetAll: async () => {
-    await AsyncStorage.removeItem(STORAGE_KEY)
+    await storage.removeItem(STORAGE_KEY)
     set({
       profileName: '',
       theme: GIRL_THEME,

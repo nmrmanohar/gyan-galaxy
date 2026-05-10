@@ -15,18 +15,20 @@ function pickMessage(stars) {
 }
 
 function StarRow({ stars, r, theme }) {
-  const anims = [
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-  ]
+  // Three separate refs — never call hooks inside array literals
+  const anim0 = useRef(new Animated.Value(0)).current
+  const anim1 = useRef(new Animated.Value(0)).current
+  const anim2 = useRef(new Animated.Value(0)).current
+  const anims = [anim0, anim1, anim2]
 
   useEffect(() => {
+    // Reset before animating (modal may be shown more than once)
+    anims.forEach((a) => a.setValue(0))
     anims.forEach((anim, i) => {
       Animated.sequence([
-        Animated.delay(i * 200),
+        Animated.delay(i * 220),
         Animated.spring(anim, {
-          toValue: i < stars ? 1 : 0.3,
+          toValue: i < stars ? 1 : 0.25,
           useNativeDriver: true,
           speed: 12,
           bounciness: 14,
