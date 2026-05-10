@@ -5,10 +5,10 @@ import { useAppStore } from '../../../src/store/useAppStore'
 import { useResponsive } from '../../../src/hooks/useResponsive'
 
 const LEVELS = [
-  { id: 1, op: '➕', title: 'Addition',       desc: 'Add numbers up to 20',        boyGame: 'Load the Train Wagons',  girlGame: 'Fill the Fairy Bakery Order' },
-  { id: 2, op: '➖', title: 'Subtraction',    desc: 'Subtract and find what\'s left', boyGame: 'Unload Truck Deliveries', girlGame: 'Spend Gems at Mermaid Market' },
-  { id: 3, op: '✖️', title: 'Multiplication', desc: 'Times tables 1–10',            boyGame: 'Times Table Tower Crane', girlGame: 'Multiply Princess Gems'       },
-  { id: 4, op: '➗', title: 'Division',       desc: 'Divide equally',              boyGame: 'Split Cargo to Trucks',   girlGame: 'Share Carrots with Unicorns'  },
+  { id: 1, op: '➕', title: 'Addition',       desc: 'Add numbers, easy → hard',    boyGame: '🚂 Load the Train Wagons',   girlGame: '🧁 Fairy Bakery Orders'    },
+  { id: 2, op: '➖', title: 'Subtraction',    desc: 'Subtract and find what\'s left', boyGame: '🚚 Unload Truck Deliveries', girlGame: '💎 Mermaid Market Gems'    },
+  { id: 3, op: '✖️', title: 'Multiplication', desc: 'Times tables 1–12',            boyGame: '🏗️ Tower Crane Stacking',   girlGame: '👑 Princess Gem Groups'    },
+  { id: 4, op: '➗', title: 'Division',       desc: 'Divide cargo equally',         boyGame: '⚙️ Split Cargo to Trucks',  girlGame: '🦄 Share Unicorn Carrots'  },
 ]
 
 export default function MathSubject() {
@@ -31,21 +31,29 @@ export default function MathSubject() {
         <Text style={s.subtitle}>{theme.worlds.math}</Text>
 
         {LEVELS.map((level) => {
-          const stars   = starsFor('math', level.id)
+          const stars    = starsFor('math', level.id)
           const gameName = theme.id === 'boy' ? level.boyGame : level.girlGame
+          const unlocked = level.id === 1 || starsFor('math', level.id - 1) > 0
           return (
-            <TouchableOpacity key={level.id} style={s.card} activeOpacity={0.85}
-              onPress={() => router.push(`/(app)/math/${level.id}`)}>
+            <TouchableOpacity
+              key={level.id}
+              style={[s.card, !unlocked && s.cardLocked]}
+              activeOpacity={unlocked ? 0.85 : 1}
+              onPress={() => unlocked && router.push(`/(app)/math/${level.id}`)}
+            >
               <View style={s.cardLeft}>
-                <Text style={s.opEmoji}>{level.op}</Text>
+                <Text style={s.opEmoji}>{unlocked ? level.op : '🔒'}</Text>
               </View>
               <View style={s.cardBody}>
-                <Text style={s.cardTitle}>{level.title}</Text>
-                <Text style={s.cardDesc}>{level.desc}</Text>
-                <Text style={s.cardGame}>{gameName}</Text>
+                <Text style={[s.cardTitle, !unlocked && s.lockedText]}>{level.title}</Text>
+                <Text style={s.cardDesc}>{unlocked ? level.desc : 'Complete previous level to unlock'}</Text>
+                {unlocked && <Text style={s.cardGame}>{gameName}</Text>}
               </View>
               <View style={s.cardRight}>
-                <Text style={s.stars}>{'⭐'.repeat(stars)}{'☆'.repeat(3 - stars)}</Text>
+                {unlocked
+                  ? <Text style={s.stars}>{'⭐'.repeat(stars)}{'☆'.repeat(3 - stars)}</Text>
+                  : <Text style={s.lockedBadge}>LOCKED</Text>
+                }
               </View>
             </TouchableOpacity>
           )
@@ -81,6 +89,9 @@ const styles = (r, theme) => StyleSheet.create({
   cardTitle: { fontSize: r.font(18), fontWeight: '700', color: theme.text },
   cardDesc:  { fontSize: r.font(12), color: '#888', marginTop: r.sp(2) },
   cardGame:  { fontSize: r.font(12), color: theme.primary, marginTop: r.sp(4), fontWeight: '600' },
-  cardRight: { marginLeft: r.sp(10) },
-  stars:     { fontSize: r.font(14) },
+  cardRight:   { marginLeft: r.sp(10), alignItems: 'flex-end' },
+  stars:       { fontSize: r.font(14) },
+  cardLocked:  { opacity: 0.55 },
+  lockedText:  { color: '#aaa' },
+  lockedBadge: { fontSize: r.font(10), color: '#bbb', fontWeight: '700', borderWidth: 1, borderColor: '#ddd', borderRadius: r.sp(4), paddingHorizontal: r.sp(6), paddingVertical: r.sp(2) },
 })
