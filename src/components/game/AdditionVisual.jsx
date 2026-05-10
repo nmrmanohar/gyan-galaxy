@@ -1,39 +1,59 @@
 /**
- * Visual teaching component for addition.
- * Three modes based on difficulty:
- *   easy   → counting dots (single-digit, groups of 5)
- *   medium → tens-and-units breakdown
- *   hard   → column addition with carry-over
+ * AdditionVisual — teaches the addition technique, NEVER reveals the answer.
  *
- * Each mode auto-plays through steps when the question changes.
+ * Easy   → themed items (wagons / gems) pop in group-by-group, then slide together
+ * Medium → tens-and-units decomposition; final step shows "= ?" not the answer
+ * Hard   → column addition with carry callouts; answer row stays blank until kid submits
  */
 import { useState, useEffect, useRef } from 'react'
 import { View, Text, Animated, StyleSheet } from 'react-native'
 import { useResponsive } from '../../hooks/useResponsive'
 
-// ─── Shared fade-in helper ────────────────────────────────────────────────────
+// ─── Theme item config ────────────────────────────────────────────────────────
 
-function useFadeIn(visible) {
-  const anim = useRef(new Animated.Value(0)).current
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: visible ? 1 : 0,
-      duration: visible ? 350 : 0,
-      useNativeDriver: true,
-    }).start()
-  }, [visible])
-  return anim
+const THEME_ITEMS = {
+  boy: {
+    group1: '🚂',   // engine
+    group2: '🚃',   // wagon
+    extra:  ['🍎', '🍊', '⚽', '🔵', '🏀'],  // overflow for large numbers
+    unit:   'wagon',
+    units:  'wagons',
+  },
+  girl: {
+    group1: '💎',
+    group2: '🌸',
+    extra:  ['🍬', '🦋', '🌟', '🍭', '🍇'],
+    unit:   'gem',
+    units:  'gems',
+  },
 }
 
-function FadeSlide({ show, children, style, fromY = 12 }) {
-  const opacity   = useRef(new Animated.Value(0)).current
+// Pick a consistent extra emoji per question (based on num1+num2 seed)
+function pickExtra(themeItems, seed) {
+  return themeItems.extra[seed % themeItems.extra.length]
+}
+
+// ─── Single animated item ─────────────────────────────────────────────────────
+
+function AnimItem({ emoji, anim, size }) {
+  return (
+    <Animated.Text style={{ fontSize: size, transform: [{ scale: anim }] }}>
+      {emoji}
+    </Animated.Text>
+  )
+}
+
+// ─── FadeSlide (opacity + translateY, native driver only) ────────────────────
+
+function FadeSlide({ show, children, style, fromY = 10 }) {
+  const opacity    = useRef(new Animated.Value(0)).current
   const translateY = useRef(new Animated.Value(fromY)).current
 
   useEffect(() => {
     if (show) {
       Animated.parallel([
-        Animated.timing(opacity,    { toValue: 1, duration: 380, useNativeDriver: true }),
-        Animated.spring(translateY, { toValue: 0, speed: 20, bounciness: 5, useNativeDriver: true }),
+        Animated.timing(opacity,    { toValue: 1, duration: 320, useNativeDriver: true }),
+        Animated.spring(translateY, { toValue: 0, speed: 18, bounciness: 4, useNativeDriver: true }),
       ]).start()
     } else {
       opacity.setValue(0)
@@ -48,138 +68,162 @@ function FadeSlide({ show, children, style, fromY = 12 }) {
   )
 }
 
-// ─── Dot row renderer ─────────────────────────────────────────────────────────
+// ─── EASY: themed items connecting ───────────────────────────────────────────
 
-function DotGroup({ count, color, r, label }) {
-  const COLS = 5
-  const rows = []
-  for (let i = 0; i < count; i += COLS) {
-    const n = Math.min(COLS, count - i)
-    rows.push(
-      <View key={i} style={{ flexDirection: 'row', gap: r.sp(5), marginBottom: r.sp(5) }}>
-        {Array.from({ length: n }, (_, j) => (
-          <View key={j} style={{
-            width: r.sp(13), height: r.sp(13),
-            borderRadius: r.sp(7),
-            backgroundColor: color,
-          }} />
-        ))}
-      </View>
-    )
-  }
-  return (
-    <View style={{ alignItems: 'center' }}>
-      <Text style={{ fontSize: r.font(22), fontWeight: '900', color, marginBottom: r.sp(6) }}>
-        {label}
-      </Text>
-      {rows}
-    </View>
-  )
-}
+const MAX_ITEMS = 10   // max per group in easy mode
 
-// ─── EASY: Counting dots ──────────────────────────────────────────────────────
+function CountingItems({ num1, num2, theme, r }) {
+  const items   = THEME_ITEMS[theme.id]
+  const extra   = pickExtra(items, num1 + num2)
+  const emoji1  = num1 <= 5 ? items.group1 : extra
+  const emoji2  = items.group2
+  const itemSize = r.font(num1 + num2 <= 10 ? 28 : 22)
 
-function CountingDots({ num1, num2, answer, theme, r }) {
-  const [step, setStep] = useState(0)
+  // One Animated.Value per item slot (10 for group1, 10 for group2)
+  const g1Anims = useRef(Array.from({ length: MAX_ITEMS }, () => new Animated.Value(0))).current
+  const g2Anims = useRef(Array.from({ length: MAX_ITEMS }, () => new Animated.Value(0))).current
+  // Slide-in for group2 container (slides from right)
+  const slideX  = useRef(new Animated.Value(80)).current
+  const slideOp = useRef(new Animated.Value(0)).current
+
+  const [phase, setPhase] = useState(0)
+  // phase 0: nothing
+  // phase 1: group1 items popping in
+  // phase 2: "+" and group2 sliding in from right, items popping in
+  // phase 3: connected label ("= ?") appears
 
   useEffect(() => {
-    setStep(0)
-    const t = [
-      setTimeout(() => setStep(1), 350),
-      setTimeout(() => setStep(2), 1100),
-      setTimeout(() => setStep(3), 2100),
-    ]
-    return () => t.forEach(clearTimeout)
+    // Hard reset
+    setPhase(0)
+    g1Anims.forEach(a => a.setValue(0))
+    g2Anims.forEach(a => a.setValue(0))
+    slideX.setValue(80)
+    slideOp.setValue(0)
+
+    const timers = []
+
+    // Phase 1: group1 pops in staggered
+    timers.push(setTimeout(() => setPhase(1), 200))
+    for (let i = 0; i < num1; i++) {
+      timers.push(setTimeout(() => {
+        Animated.spring(g1Anims[i], { toValue: 1, useNativeDriver: true, speed: 22, bounciness: 12 }).start()
+      }, 300 + i * 110))
+    }
+
+    // Phase 2: group2 slides in from right
+    const phase2Start = 300 + num1 * 110 + 400
+    timers.push(setTimeout(() => {
+      setPhase(2)
+      Animated.parallel([
+        Animated.spring(slideX,  { toValue: 0, useNativeDriver: true, speed: 14, bounciness: 5 }),
+        Animated.timing(slideOp, { toValue: 1, duration: 250, useNativeDriver: true }),
+      ]).start()
+    }, phase2Start))
+
+    // Group2 items pop in staggered after container slides in
+    for (let i = 0; i < num2; i++) {
+      timers.push(setTimeout(() => {
+        Animated.spring(g2Anims[i], { toValue: 1, useNativeDriver: true, speed: 22, bounciness: 12 }).start()
+      }, phase2Start + 200 + i * 110))
+    }
+
+    // Phase 3: connection label
+    timers.push(setTimeout(() => setPhase(3), phase2Start + 200 + num2 * 110 + 400))
+
+    return () => timers.forEach(clearTimeout)
   }, [num1, num2])
 
-  const s = dotStyles(r)
+  const s = easyStyles(r)
+
+  function ItemGrid({ count, anims, emoji }) {
+    const rows = []
+    for (let i = 0; i < count; i += 5) {
+      const n = Math.min(5, count - i)
+      rows.push(
+        <View key={i} style={s.itemRow}>
+          {Array.from({ length: n }, (_, j) => (
+            <AnimItem key={j} emoji={emoji} anim={anims[i + j]} size={itemSize} />
+          ))}
+        </View>
+      )
+    }
+    return <View style={s.itemGrid}>{rows}</View>
+  }
 
   return (
     <View style={s.container}>
-      <Text style={s.heading}>Count them together!</Text>
+      <Text style={s.heading}>
+        {theme.id === 'boy' ? 'Connect the wagons!' : 'Join the gems!'}
+      </Text>
 
-      <View style={s.row}>
+      <View style={s.groups}>
         {/* Group 1 */}
-        <FadeSlide show={step >= 1}>
-          <DotGroup count={num1} color={theme.primary} r={r} label={String(num1)} />
-        </FadeSlide>
+        {phase >= 1 && (
+          <View style={s.groupBox}>
+            <ItemGrid count={num1} anims={g1Anims} emoji={emoji1} />
+            <Text style={[s.groupLabel, { color: theme.primary }]}>{num1}</Text>
+          </View>
+        )}
 
         {/* Plus sign */}
-        <FadeSlide show={step >= 2}>
-          <Text style={[s.operator, { color: theme.text }]}>+</Text>
+        <FadeSlide show={phase >= 2}>
+          <Text style={[s.plus, { color: theme.text }]}>+</Text>
         </FadeSlide>
 
-        {/* Group 2 */}
-        <FadeSlide show={step >= 2}>
-          <DotGroup count={num2} color={theme.secondary} r={r} label={String(num2)} />
-        </FadeSlide>
+        {/* Group 2 — slides in from right */}
+        <Animated.View style={[s.groupBox, {
+          opacity: slideOp,
+          transform: [{ translateX: slideX }],
+        }]}>
+          <ItemGrid count={num2} anims={g2Anims} emoji={emoji2} />
+          <Text style={[s.groupLabel, { color: theme.secondary }]}>{num2}</Text>
+        </Animated.View>
       </View>
 
-      {/* Result */}
-      <FadeSlide show={step >= 3} style={s.resultRow}>
-        <Text style={[s.equals, { color: theme.text }]}>= </Text>
-        <View style={{ alignItems: 'center' }}>
-          {/* Combined dot rows */}
-          {(() => {
-            const all = [
-              ...Array(num1).fill(theme.primary),
-              ...Array(num2).fill(theme.secondary),
-            ]
-            const rows = []
-            for (let i = 0; i < all.length; i += 5) {
-              const slice = all.slice(i, i + 5)
-              rows.push(
-                <View key={i} style={{ flexDirection: 'row', gap: r.sp(5), marginBottom: r.sp(5) }}>
-                  {slice.map((col, j) => (
-                    <View key={j} style={{
-                      width: r.sp(13), height: r.sp(13),
-                      borderRadius: r.sp(7), backgroundColor: col,
-                    }} />
-                  ))}
-                </View>
-              )
-            }
-            return rows
-          })()}
-          <Text style={[s.answerLabel, { color: theme.primary }]}>{answer}</Text>
-        </View>
+      {/* Phase 3: connected question — NO answer shown */}
+      <FadeSlide show={phase >= 3} style={[s.connectedBox, { borderColor: theme.primary }]}>
+        <Text style={s.connectedText}>
+          {num1} {items.units}  +  {num2} {items.units}  =  {'  '}
+        </Text>
+        <Text style={[s.questionMark, { color: theme.primary }]}>?</Text>
       </FadeSlide>
     </View>
   )
 }
 
-const dotStyles = (r) => StyleSheet.create({
-  container:   { padding: r.sp(14), backgroundColor: '#FAFAFA', borderRadius: r.sp(16) },
-  heading:     { fontSize: r.font(13), color: '#888', fontWeight: '700', marginBottom: r.sp(14), textAlign: 'center' },
-  row:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: r.sp(16), flexWrap: 'wrap' },
-  operator:    { fontSize: r.font(36), fontWeight: '900', marginTop: r.sp(14) },
-  resultRow:   { flexDirection: 'row', alignItems: 'flex-start', marginTop: r.sp(16), justifyContent: 'center' },
-  equals:      { fontSize: r.font(28), fontWeight: '900', marginTop: r.sp(6) },
-  answerLabel: { fontSize: r.font(26), fontWeight: '900', marginTop: r.sp(4) },
+const easyStyles = (r) => StyleSheet.create({
+  container:     { padding: r.sp(14), backgroundColor: '#FAFAFA', borderRadius: r.sp(16) },
+  heading:       { fontSize: r.font(13), color: '#888', fontWeight: '700', marginBottom: r.sp(12), textAlign: 'center' },
+  groups:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: r.sp(10), flexWrap: 'wrap', marginBottom: r.sp(12) },
+  groupBox:      { alignItems: 'center' },
+  itemGrid:      { gap: r.sp(4) },
+  itemRow:       { flexDirection: 'row', gap: r.sp(4) },
+  groupLabel:    { fontSize: r.font(18), fontWeight: '900', marginTop: r.sp(6), textAlign: 'center' },
+  plus:          { fontSize: r.font(32), fontWeight: '900', marginTop: r.sp(10) },
+  connectedBox:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderRadius: r.sp(12), padding: r.sp(10) },
+  connectedText: { fontSize: r.font(14), fontWeight: '700', color: '#444' },
+  questionMark:  { fontSize: r.font(28), fontWeight: '900' },
 })
 
-// ─── MEDIUM: Tens-and-units breakdown ────────────────────────────────────────
+// ─── MEDIUM: Tens-and-units (answer NOT shown at final step) ─────────────────
 
-function TensUnits({ num1, num2, answer, theme, r }) {
+function TensUnits({ num1, num2, r, theme }) {
   const [step, setStep] = useState(0)
 
-  const tens1  = Math.floor(num1 / 10)
-  const units1 = num1 % 10
-  const tens2  = Math.floor(num2 / 10)
-  const units2 = num2 % 10
-
-  const unitsSum  = units1 + units2
-  const unitWrite = unitsSum % 10
-  const carry     = Math.floor(unitsSum / 10)   // 0 or 1
-  const tensSum   = tens1 + tens2 + carry
+  const tens1  = Math.floor(num1 / 10),  units1 = num1 % 10
+  const tens2  = Math.floor(num2 / 10),  units2 = num2 % 10
+  const uSum   = units1 + units2
+  const carry  = Math.floor(uSum / 10)
+  const uWrite = uSum % 10
+  const tSum   = tens1 + tens2 + carry
 
   useEffect(() => {
     setStep(0)
     const t = [
-      setTimeout(() => setStep(1), 300),   // show breakdown
-      setTimeout(() => setStep(2), 1200),  // units combine
-      setTimeout(() => setStep(3), 2200),  // tens combine
-      setTimeout(() => setStep(4), 3300),  // show total
+      setTimeout(() => setStep(1), 300),
+      setTimeout(() => setStep(2), 1300),
+      setTimeout(() => setStep(3), 2400),
+      setTimeout(() => setStep(4), 3500),
     ]
     return () => t.forEach(clearTimeout)
   }, [num1, num2])
@@ -188,196 +232,171 @@ function TensUnits({ num1, num2, answer, theme, r }) {
 
   return (
     <View style={s.container}>
-      <Text style={s.heading}>Break it into tens and units!</Text>
+      <Text style={s.heading}>Break into tens and units!</Text>
 
-      {/* Step 1: Decomposition */}
+      {/* Step 1: decomposition */}
       <FadeSlide show={step >= 1}>
         <View style={s.decompRow}>
-          <DecompBox num={num1} tens={tens1} units={units1} color={theme.primary} r={r} />
-          <Text style={[s.plus, { color: theme.text }]}>+</Text>
-          <DecompBox num={num2} tens={tens2} units={units2} color={theme.secondary} r={r} />
+          <View style={[s.decompBox, { borderColor: theme.primary }]}>
+            <Text style={[s.decompNum, { color: theme.primary }]}>{num1}</Text>
+            <Text style={s.decompSub}>{tens1 > 0 ? `${tens1*10} + ${units1}` : `${units1}`}</Text>
+          </View>
+          <Text style={[s.decompPlus, { color: theme.text }]}>+</Text>
+          <View style={[s.decompBox, { borderColor: theme.secondary }]}>
+            <Text style={[s.decompNum, { color: theme.secondary }]}>{num2}</Text>
+            <Text style={s.decompSub}>{tens2 > 0 ? `${tens2*10} + ${units2}` : `${units2}`}</Text>
+          </View>
         </View>
       </FadeSlide>
 
       <View style={s.stepsCol}>
-        {/* Step 2: Units column */}
+        {/* Step 2: units */}
         <FadeSlide show={step >= 2}>
           <View style={s.stepRow}>
-            <View style={[s.stepBadge, { backgroundColor: theme.surface }]}>
-              <Text style={[s.stepLabel, { color: theme.text }]}>Units</Text>
+            <View style={[s.badge, { backgroundColor: theme.surface }]}>
+              <Text style={[s.badgeText, { color: theme.text }]}>Units</Text>
             </View>
             <Text style={s.stepMath}>
-              {units1} + {units2} = {unitsSum}
-              {carry > 0 ? `  →  write ${unitWrite}, carry 1` : ''}
+              {units1} + {units2} = {uSum}
+              {carry > 0 ? `  →  write ${uWrite}, carry 1` : ''}
             </Text>
           </View>
         </FadeSlide>
 
-        {/* Step 3: Tens column */}
+        {/* Step 3: tens */}
         <FadeSlide show={step >= 3}>
           <View style={s.stepRow}>
-            <View style={[s.stepBadge, { backgroundColor: theme.surface }]}>
-              <Text style={[s.stepLabel, { color: theme.text }]}>Tens</Text>
+            <View style={[s.badge, { backgroundColor: theme.surface }]}>
+              <Text style={[s.badgeText, { color: theme.text }]}>Tens</Text>
             </View>
             <Text style={s.stepMath}>
-              {tens1}0 + {tens2}0{carry > 0 ? ' + 10 (carry)' : ''} = {tensSum * 10}
+              {tens1*10} + {tens2*10}{carry > 0 ? ' + 10' : ''} = {tSum * 10}
             </Text>
           </View>
         </FadeSlide>
 
-        {/* Step 4: Total */}
+        {/* Step 4: final — show the sum expression but leave answer as ? */}
         <FadeSlide show={step >= 4}>
-          <View style={[s.totalRow, { borderColor: theme.primary }]}>
-            <Text style={[s.totalLabel, { color: theme.text }]}>
-              {tensSum * 10} + {unitWrite} =
+          <View style={[s.finalRow, { borderColor: theme.primary }]}>
+            <Text style={[s.finalText, { color: theme.text }]}>
+              {tSum * 10} + {uWrite} =
             </Text>
-            <Text style={[s.totalAnswer, { color: theme.primary }]}> {answer}</Text>
+            <Text style={[s.finalQ, { color: theme.primary }]}>  ?</Text>
           </View>
         </FadeSlide>
       </View>
-    </View>
-  )
-}
-
-function DecompBox({ num, tens, units, color, r }) {
-  const s = tuStyles(r)
-  return (
-    <View style={[s.decompBox, { borderColor: color }]}>
-      <Text style={[s.decompNum, { color }]}>{num}</Text>
-      <Text style={s.decompEq}>= {tens > 0 ? `${tens}0 + ` : ''}{units}</Text>
     </View>
   )
 }
 
 const tuStyles = (r) => StyleSheet.create({
-  container:   { padding: r.sp(14), backgroundColor: '#FAFAFA', borderRadius: r.sp(16) },
-  heading:     { fontSize: r.font(13), color: '#888', fontWeight: '700', marginBottom: r.sp(12), textAlign: 'center' },
-  decompRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: r.sp(10), marginBottom: r.sp(14) },
-  plus:        { fontSize: r.font(28), fontWeight: '900' },
-  decompBox:   { alignItems: 'center', borderWidth: 2, borderRadius: r.sp(12), padding: r.sp(10), minWidth: r.sp(70) },
-  decompNum:   { fontSize: r.font(24), fontWeight: '900' },
-  decompEq:    { fontSize: r.font(12), color: '#888', marginTop: r.sp(2), fontWeight: '600' },
-  stepsCol:    { gap: r.sp(8) },
-  stepRow:     { flexDirection: 'row', alignItems: 'center', gap: r.sp(10) },
-  stepBadge:   { borderRadius: r.sp(8), paddingHorizontal: r.sp(8), paddingVertical: r.sp(4), minWidth: r.sp(52) },
-  stepLabel:   { fontSize: r.font(11), fontWeight: '800', textAlign: 'center' },
-  stepMath:    { fontSize: r.font(14), fontWeight: '600', color: '#444', flexShrink: 1 },
-  totalRow:    { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: r.sp(12), padding: r.sp(10), marginTop: r.sp(4) },
-  totalLabel:  { fontSize: r.font(16), fontWeight: '700' },
-  totalAnswer: { fontSize: r.font(24), fontWeight: '900' },
+  container:  { padding: r.sp(14), backgroundColor: '#FAFAFA', borderRadius: r.sp(16) },
+  heading:    { fontSize: r.font(13), color: '#888', fontWeight: '700', marginBottom: r.sp(12), textAlign: 'center' },
+  decompRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: r.sp(10), marginBottom: r.sp(12) },
+  decompBox:  { alignItems: 'center', borderWidth: 2, borderRadius: r.sp(10), padding: r.sp(10), minWidth: r.sp(64) },
+  decompNum:  { fontSize: r.font(24), fontWeight: '900' },
+  decompSub:  { fontSize: r.font(11), color: '#888', marginTop: r.sp(2), fontWeight: '600' },
+  decompPlus: { fontSize: r.font(26), fontWeight: '900' },
+  stepsCol:   { gap: r.sp(8) },
+  stepRow:    { flexDirection: 'row', alignItems: 'center', gap: r.sp(10) },
+  badge:      { borderRadius: r.sp(8), paddingHorizontal: r.sp(8), paddingVertical: r.sp(4), minWidth: r.sp(50) },
+  badgeText:  { fontSize: r.font(11), fontWeight: '800', textAlign: 'center' },
+  stepMath:   { fontSize: r.font(13), fontWeight: '600', color: '#444', flexShrink: 1 },
+  finalRow:   { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: r.sp(10), padding: r.sp(10), marginTop: r.sp(4) },
+  finalText:  { fontSize: r.font(16), fontWeight: '700', color: '#333' },
+  finalQ:     { fontSize: r.font(24), fontWeight: '900' },
 })
 
-// ─── HARD: Column addition ────────────────────────────────────────────────────
+// ─── HARD: Column addition (answer row stays blank) ───────────────────────────
 
-function ColumnMethod({ num1, num2, answer, theme, r }) {
+function ColumnMethod({ num1, num2, r, theme }) {
   const [step, setStep] = useState(0)
 
-  // Break each number into digit columns (up to 3 digits)
-  const digits1 = String(num1).padStart(3, ' ')
-  const digits2 = String(num2).padStart(3, ' ')
-  const dAns    = String(answer).padStart(3, ' ')
-
-  // Column sums with carry
-  const u1 = num1 % 10,            u2 = num2 % 10
-  const t1 = Math.floor(num1 / 10) % 10, t2 = Math.floor(num2 / 10) % 10
-  const h1 = Math.floor(num1 / 100),     h2 = Math.floor(num2 / 100)
+  const u1 = num1 % 10,              u2 = num2 % 10
+  const t1 = Math.floor(num1/10)%10, t2 = Math.floor(num2/10)%10
+  const h1 = Math.floor(num1/100),   h2 = Math.floor(num2/100)
 
   const uSum   = u1 + u2
-  const uWrite = uSum % 10
-  const uCarry = Math.floor(uSum / 10)
-
+  const uWrite = uSum % 10,  uCarry = Math.floor(uSum/10)
   const tSum   = t1 + t2 + uCarry
-  const tWrite = tSum % 10
-  const tCarry = Math.floor(tSum / 10)
-
-  const hSum   = h1 + h2 + tCarry
-
-  const hasHundreds = h1 > 0 || h2 > 0 || hSum > 0
-
-  const totalSteps = hasHundreds ? 5 : 4
+  const tWrite = tSum % 10,  tCarry = Math.floor(tSum/10)
+  const hasH   = h1 > 0 || h2 > 0 || tCarry > 0
 
   useEffect(() => {
     setStep(0)
     const t = [
-      setTimeout(() => setStep(1), 350),   // show stacked numbers
-      setTimeout(() => setStep(2), 1100),  // units column
-      setTimeout(() => setStep(3), 2200),  // tens column
-      hasHundreds ? setTimeout(() => setStep(4), 3300) : null,  // hundreds
-      setTimeout(() => setStep(hasHundreds ? 5 : 4), hasHundreds ? 4400 : 3300),  // answer
+      setTimeout(() => setStep(1), 350),
+      setTimeout(() => setStep(2), 1200),
+      setTimeout(() => setStep(3), 2400),
+      hasH ? setTimeout(() => setStep(4), 3500) : null,
     ].filter(Boolean)
     return () => t.forEach(clearTimeout)
   }, [num1, num2])
 
   const s = colStyles(r)
 
-  const colHighlight = (colStep) =>
-    step >= colStep ? { backgroundColor: `${theme.primary}22`, borderRadius: r.sp(6) } : {}
+  const highlight = (active) => active ? { backgroundColor: `${theme.primary}25`, borderRadius: r.sp(4) } : {}
 
   return (
     <View style={s.container}>
-      <Text style={s.heading}>Column addition — right to left!</Text>
+      <Text style={s.heading}>Column by column — right to left!</Text>
 
-      {/* Stacked numbers */}
       <FadeSlide show={step >= 1}>
         <View style={s.board}>
           {/* Carry row */}
-          <View style={s.digitRow}>
-            <Text style={s.carryCell}>{(step >= 3 && tCarry > 0) ? tCarry : ' '}</Text>
-            <Text style={s.carryCell}>{(step >= 2 && uCarry > 0) ? uCarry : ' '}</Text>
-            <Text style={s.carryCell}> </Text>
+          <View style={s.dRow}>
+            {hasH && <Text style={s.carry}>{step >= 4 && tCarry ? tCarry : ' '}</Text>}
+            <Text style={s.carry}>{step >= 3 && uCarry ? uCarry : ' '}</Text>
+            <Text style={s.carry}> </Text>
           </View>
-
           {/* num1 */}
-          <View style={s.digitRow}>
-            {hasHundreds && <Text style={[s.digit, colHighlight(4)]}>{h1 || ' '}</Text>}
-            <Text style={[s.digit, colHighlight(3)]}>{t1 || (num1 < 10 ? ' ' : '0')}</Text>
-            <Text style={[s.digit, colHighlight(2)]}>{u1}</Text>
+          <View style={s.dRow}>
+            {hasH && <Text style={[s.digit, highlight(step >= 4)]}>{h1 || ' '}</Text>}
+            <Text style={[s.digit, highlight(step >= 3)]}>{num1 >= 10 ? t1 : ' '}</Text>
+            <Text style={[s.digit, highlight(step >= 2)]}>{u1}</Text>
           </View>
-
-          {/* + num2 */}
-          <View style={s.digitRow}>
-            {hasHundreds && <Text style={[s.digit, colHighlight(4)]}>{h2 || ' '}</Text>}
-            <Text style={[s.digit, colHighlight(3)]}>{t2 || (num2 < 10 ? ' ' : '0')}</Text>
-            <Text style={[s.digit, colHighlight(2)]}>{u2}</Text>
+          {/* num2 */}
+          <View style={s.dRow}>
+            {hasH && <Text style={[s.digit, highlight(step >= 4)]}>{h2 || ' '}</Text>}
+            <Text style={[s.digit, highlight(step >= 3)]}>{num2 >= 10 ? t2 : ' '}</Text>
+            <Text style={[s.digit, highlight(step >= 2)]}>{u2}</Text>
           </View>
-
-          {/* Divider with + */}
-          <View style={s.dividerRow}>
-            <Text style={[s.plusSign, { color: theme.primary }]}>+</Text>
-            <View style={[s.divider, { backgroundColor: theme.primary }]} />
+          {/* Divider */}
+          <View style={s.divRow}>
+            <Text style={[s.plusSym, { color: theme.primary }]}>+</Text>
+            <View style={[s.line, { backgroundColor: theme.primary }]} />
           </View>
-
-          {/* Answer */}
-          <FadeSlide show={step >= totalSteps}>
-            <View style={s.digitRow}>
-              {hasHundreds && <Text style={[s.digit, s.answerDigit, { color: theme.primary }]}>{hSum > 0 ? hSum : ' '}</Text>}
-              <Text style={[s.digit, s.answerDigit, { color: theme.primary }]}>{tWrite}</Text>
-              <Text style={[s.digit, s.answerDigit, { color: theme.primary }]}>{uWrite}</Text>
-            </View>
-          </FadeSlide>
+          {/* Answer row — always "?" until kid submits */}
+          <View style={s.dRow}>
+            {hasH && <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>}
+            <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
+            <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
+          </View>
         </View>
       </FadeSlide>
 
-      {/* Step callouts */}
+      {/* Callouts */}
       <View style={s.callouts}>
         <FadeSlide show={step >= 2}>
           <View style={[s.callout, { borderColor: theme.primary }]}>
-            <Text style={s.calloutTitle}>① Units  {u1} + {u2} = {uSum}</Text>
-            {uCarry > 0 && <Text style={s.calloutSub}>Write {uWrite}, carry {uCarry} to tens</Text>}
+            <Text style={s.calloutT}>① Units:  {u1} + {u2} = {uSum}</Text>
+            {uCarry > 0 && <Text style={s.calloutS}>Write {uWrite}, carry 1 to tens</Text>}
           </View>
         </FadeSlide>
-
         <FadeSlide show={step >= 3}>
           <View style={[s.callout, { borderColor: theme.secondary }]}>
-            <Text style={s.calloutTitle}>② Tens  {t1} + {t2}{uCarry > 0 ? ` + ${uCarry}` : ''} = {tSum}</Text>
-            {tCarry > 0 && <Text style={s.calloutSub}>Write {tWrite}, carry {tCarry} to hundreds</Text>}
+            <Text style={s.calloutT}>
+              ② Tens:  {t1} + {t2}{uCarry > 0 ? ` + ${uCarry} (carry)` : ''} = {tSum}
+            </Text>
+            {tCarry > 0 && <Text style={s.calloutS}>Write {tWrite}, carry 1 to hundreds</Text>}
           </View>
         </FadeSlide>
-
-        {hasHundreds && (
+        {hasH && (
           <FadeSlide show={step >= 4}>
-            <View style={[s.callout, { borderColor: '#888' }]}>
-              <Text style={s.calloutTitle}>③ Hundreds  {h1} + {h2}{tCarry > 0 ? ` + ${tCarry}` : ''} = {hSum}</Text>
+            <View style={[s.callout, { borderColor: '#999' }]}>
+              <Text style={s.calloutT}>
+                ③ Hundreds:  {h1} + {h2}{tCarry > 0 ? ` + ${tCarry} (carry)` : ''} = {h1+h2+tCarry}
+              </Text>
             </View>
           </FadeSlide>
         )}
@@ -387,33 +406,29 @@ function ColumnMethod({ num1, num2, answer, theme, r }) {
 }
 
 const colStyles = (r) => StyleSheet.create({
-  container:    { padding: r.sp(14), backgroundColor: '#FAFAFA', borderRadius: r.sp(16) },
-  heading:      { fontSize: r.font(13), color: '#888', fontWeight: '700', marginBottom: r.sp(12), textAlign: 'center' },
-  board:        { alignSelf: 'center', marginBottom: r.sp(12) },
-  digitRow:     { flexDirection: 'row', justifyContent: 'flex-end', gap: r.sp(4) },
-  digit:        { width: r.sp(32), textAlign: 'center', fontSize: r.font(28), fontWeight: '800', color: '#333', paddingVertical: r.sp(2) },
-  answerDigit:  { fontWeight: '900' },
-  carryCell:    { width: r.sp(32), textAlign: 'center', fontSize: r.font(13), color: '#E53935', fontWeight: '800', height: r.sp(18) },
-  dividerRow:   { flexDirection: 'row', alignItems: 'center', marginVertical: r.sp(4) },
-  plusSign:     { fontSize: r.font(18), fontWeight: '900', marginRight: r.sp(4) },
-  divider:      { flex: 1, height: 2.5, borderRadius: 2 },
-  callouts:     { gap: r.sp(8) },
-  callout:      { borderWidth: 1.5, borderRadius: r.sp(10), padding: r.sp(10) },
-  calloutTitle: { fontSize: r.font(13), fontWeight: '700', color: '#333' },
-  calloutSub:   { fontSize: r.font(12), color: '#E53935', fontWeight: '600', marginTop: r.sp(3) },
+  container: { padding: r.sp(14), backgroundColor: '#FAFAFA', borderRadius: r.sp(16) },
+  heading:   { fontSize: r.font(13), color: '#888', fontWeight: '700', marginBottom: r.sp(12), textAlign: 'center' },
+  board:     { alignSelf: 'center', marginBottom: r.sp(12) },
+  dRow:      { flexDirection: 'row', justifyContent: 'flex-end', gap: r.sp(2) },
+  digit:     { width: r.sp(30), textAlign: 'center', fontSize: r.font(26), fontWeight: '800', color: '#333', paddingVertical: r.sp(2) },
+  ansDigit:  { fontWeight: '900' },
+  carry:     { width: r.sp(30), textAlign: 'center', fontSize: r.font(12), color: '#E53935', fontWeight: '800', height: r.sp(18) },
+  divRow:    { flexDirection: 'row', alignItems: 'center', marginVertical: r.sp(4) },
+  plusSym:   { fontSize: r.font(16), fontWeight: '900', marginRight: r.sp(4) },
+  line:      { flex: 1, height: 2.5, borderRadius: 2 },
+  callouts:  { gap: r.sp(8) },
+  callout:   { borderWidth: 1.5, borderRadius: r.sp(10), padding: r.sp(10) },
+  calloutT:  { fontSize: r.font(13), fontWeight: '700', color: '#333' },
+  calloutS:  { fontSize: r.font(11), color: '#E53935', fontWeight: '600', marginTop: r.sp(3) },
 })
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export default function AdditionVisual({ num1, num2, answer, difficulty, theme }) {
-  const r = useResponsive()
-  const key = `${num1}+${num2}`   // force re-mount on new question
+export default function AdditionVisual({ num1, num2, difficulty, theme }) {
+  const r   = useResponsive()
+  const key = `${num1}+${num2}+${difficulty}`
 
-  if (difficulty === 'easy') {
-    return <CountingDots   key={key} num1={num1} num2={num2} answer={answer} theme={theme} r={r} />
-  }
-  if (difficulty === 'medium') {
-    return <TensUnits      key={key} num1={num1} num2={num2} answer={answer} theme={theme} r={r} />
-  }
-  return   <ColumnMethod   key={key} num1={num1} num2={num2} answer={answer} theme={theme} r={r} />
+  if (difficulty === 'easy')   return <CountingItems key={key} num1={num1} num2={num2} theme={theme} r={r} />
+  if (difficulty === 'medium') return <TensUnits     key={key} num1={num1} num2={num2} theme={theme} r={r} />
+  return                              <ColumnMethod  key={key} num1={num1} num2={num2} theme={theme} r={r} />
 }

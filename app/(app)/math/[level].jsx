@@ -168,7 +168,6 @@ export default function MathGame() {
             <AdditionVisual
               num1={question.num1}
               num2={question.num2}
-              answer={question.answer}
               difficulty={question.difficulty}
               theme={theme}
             />
