@@ -8,7 +8,10 @@ import { generateSession, calcStars, LEVEL_CONTEXT } from '../../../src/utils/ma
 import AnswerButton         from '../../../src/components/game/AnswerButton'
 import GameProgressBar      from '../../../src/components/game/GameProgressBar'
 import ResultsModal         from '../../../src/components/game/ResultsModal'
-import AdditionVisual       from '../../../src/components/game/AdditionVisual'
+import AdditionVisual        from '../../../src/components/game/AdditionVisual'
+import SubtractionVisual    from '../../../src/components/game/SubtractionVisual'
+import MultiplicationVisual from '../../../src/components/game/MultiplicationVisual'
+import DivisionVisual       from '../../../src/components/game/DivisionVisual'
 
 const TOTAL        = 10
 const AUTO_NEXT_MS = 1400
@@ -162,10 +165,40 @@ export default function MathGame() {
           </Animated.View>
         </Animated.View>
 
-        {/* Visual teaching — only for addition (level 1) */}
+        {/* Visual teaching — one component per operation */}
         {levelId === 1 && (
           <View style={s.visualWrap}>
             <AdditionVisual
+              num1={question.num1}
+              num2={question.num2}
+              difficulty={question.difficulty}
+              theme={theme}
+            />
+          </View>
+        )}
+        {levelId === 2 && (
+          <View style={s.visualWrap}>
+            <SubtractionVisual
+              num1={question.num1}
+              num2={question.num2}
+              difficulty={question.difficulty}
+              theme={theme}
+            />
+          </View>
+        )}
+        {levelId === 3 && (
+          <View style={s.visualWrap}>
+            <MultiplicationVisual
+              num1={question.num1}
+              num2={question.num2}
+              difficulty={question.difficulty}
+              theme={theme}
+            />
+          </View>
+        )}
+        {levelId === 4 && (
+          <View style={s.visualWrap}>
+            <DivisionVisual
               num1={question.num1}
               num2={question.num2}
               difficulty={question.difficulty}
