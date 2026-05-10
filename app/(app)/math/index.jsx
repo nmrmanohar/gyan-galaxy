@@ -15,7 +15,7 @@ export default function MathSubject() {
   const router     = useRouter()
   const r          = useResponsive()
   const theme      = useAppStore((s) => s.theme)
-  const starsFor   = useAppStore((s) => s.starsFor)
+  const starsFor   = useAppStore((s) => s.starsFor)  // stars display only
 
   const s = styles(r, theme)
 
@@ -33,27 +33,23 @@ export default function MathSubject() {
         {LEVELS.map((level) => {
           const stars    = starsFor('math', level.id)
           const gameName = theme.id === 'boy' ? level.boyGame : level.girlGame
-          const unlocked = level.id === 1 || starsFor('math', level.id - 1) > 0
           return (
             <TouchableOpacity
               key={level.id}
-              style={[s.card, !unlocked && s.cardLocked]}
-              activeOpacity={unlocked ? 0.85 : 1}
-              onPress={() => unlocked && router.push(`/(app)/math/${level.id}`)}
+              style={s.card}
+              activeOpacity={0.85}
+              onPress={() => router.push(`/(app)/math/${level.id}`)}
             >
               <View style={s.cardLeft}>
-                <Text style={s.opEmoji}>{unlocked ? level.op : '🔒'}</Text>
+                <Text style={s.opEmoji}>{level.op}</Text>
               </View>
               <View style={s.cardBody}>
-                <Text style={[s.cardTitle, !unlocked && s.lockedText]}>{level.title}</Text>
-                <Text style={s.cardDesc}>{unlocked ? level.desc : 'Complete previous level to unlock'}</Text>
-                {unlocked && <Text style={s.cardGame}>{gameName}</Text>}
+                <Text style={s.cardTitle}>{level.title}</Text>
+                <Text style={s.cardDesc}>{level.desc}</Text>
+                <Text style={s.cardGame}>{gameName}</Text>
               </View>
               <View style={s.cardRight}>
-                {unlocked
-                  ? <Text style={s.stars}>{'⭐'.repeat(stars)}{'☆'.repeat(3 - stars)}</Text>
-                  : <Text style={s.lockedBadge}>LOCKED</Text>
-                }
+                <Text style={s.stars}>{'⭐'.repeat(stars)}{'☆'.repeat(3 - stars)}</Text>
               </View>
             </TouchableOpacity>
           )
@@ -91,7 +87,4 @@ const styles = (r, theme) => StyleSheet.create({
   cardGame:  { fontSize: r.font(12), color: theme.primary, marginTop: r.sp(4), fontWeight: '600' },
   cardRight:   { marginLeft: r.sp(10), alignItems: 'flex-end' },
   stars:       { fontSize: r.font(14) },
-  cardLocked:  { opacity: 0.55 },
-  lockedText:  { color: '#aaa' },
-  lockedBadge: { fontSize: r.font(10), color: '#bbb', fontWeight: '700', borderWidth: 1, borderColor: '#ddd', borderRadius: r.sp(4), paddingHorizontal: r.sp(6), paddingVertical: r.sp(2) },
 })
