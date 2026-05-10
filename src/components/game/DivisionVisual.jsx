@@ -45,7 +45,7 @@ function FadeSlide({ show, children, style, fromY = 10 }) {
 const MAX_GROUPS = 6  // cap groups for visual sanity
 const MAX_ITEMS  = 20 // cap total items shown
 
-function DealingItems({ num1, num2, theme, r }) {
+function DealingItems({ num1, num2, theme, r, answer }) {
   const cfg        = THEME_ITEMS[theme.id]
   const emoji      = num1 > 12 ? pickEmoji(theme.id, num1 + num2) : cfg.emoji
   const groupCount = Math.min(num2, MAX_GROUPS)
@@ -65,6 +65,13 @@ function DealingItems({ num1, num2, theme, r }) {
     itemAnims.forEach(a => a.setValue(0))
     setShowLabel(false)
 
+    // Revealed mode: show everything immediately
+    if (answer != null) {
+      itemAnims.slice(0, itemCount).forEach(a => a.setValue(1))
+      setTimeout(() => setShowLabel(true), 80)
+      return
+    }
+
     const timers = []
     for (let i = 0; i < itemCount; i++) {
       timers.push(setTimeout(() => {
@@ -75,7 +82,7 @@ function DealingItems({ num1, num2, theme, r }) {
     }
     timers.push(setTimeout(() => setShowLabel(true), 300 + itemCount * 220 + 400))
     return () => timers.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = styles(r)
 
@@ -114,11 +121,13 @@ function DealingItems({ num1, num2, theme, r }) {
       </View>
 
       <FadeSlide show={showLabel}>
-        <View style={[s.labelBox, { borderColor: theme.primary }]}>
+        <View style={[s.labelBox, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
           <Text style={s.labelText}>
             {num1} {cfg.units}  ÷  {groupCount} {cfg.groupLabel}s  =
           </Text>
-          <Text style={[s.qMark, { color: theme.primary }]}>  ?</Text>
+          <Text style={[s.qMark, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+            {'  '}{answer != null ? answer : '?'}
+          </Text>
         </View>
       </FadeSlide>
     </View>
@@ -130,7 +139,7 @@ function DealingItems({ num1, num2, theme, r }) {
 
 const MAX_STEPS = 8
 
-function RepeatedSubtraction({ num1, num2, r, theme }) {
+function RepeatedSubtraction({ num1, num2, r, theme, answer }) {
   const actualSteps = Math.floor(num1 / num2)
   const showSteps   = Math.min(actualSteps, MAX_STEPS)
   const isTruncated = actualSteps > MAX_STEPS
@@ -142,13 +151,14 @@ function RepeatedSubtraction({ num1, num2, r, theme }) {
     setVisibleStep(0)
     setShowLabel(false)
 
+    const fast = answer != null
     const timers = []
     for (let i = 1; i <= showSteps; i++) {
-      timers.push(setTimeout(() => setVisibleStep(i), 300 + (i - 1) * 600))
+      timers.push(setTimeout(() => setVisibleStep(i), fast ? i * 120 : 300 + (i - 1) * 600))
     }
-    timers.push(setTimeout(() => setShowLabel(true), 300 + showSteps * 600 + 400))
+    timers.push(setTimeout(() => setShowLabel(true), fast ? showSteps * 120 + 100 : 300 + showSteps * 600 + 400))
     return () => timers.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s  = styles(r)
   const steps = Array.from({ length: showSteps }, (_, i) => ({
@@ -185,11 +195,13 @@ function RepeatedSubtraction({ num1, num2, r, theme }) {
       </View>
 
       <FadeSlide show={showLabel}>
-        <View style={[s.finalRow, { borderColor: theme.primary }]}>
+        <View style={[s.finalRow, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
           <Text style={[s.finalText, { color: theme.text }]}>
             Subtracted {num2} a total of
           </Text>
-          <Text style={[s.finalQ, { color: theme.primary }]}>  ?  </Text>
+          <Text style={[s.finalQ, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+            {'  '}{answer != null ? answer : '?'}{'  '}
+          </Text>
           <Text style={[s.finalText, { color: theme.text }]}>times</Text>
         </View>
       </FadeSlide>
@@ -199,7 +211,7 @@ function RepeatedSubtraction({ num1, num2, r, theme }) {
 
 // ─── HARD: long division ──────────────────────────────────────────────────────
 
-function LongDivision({ num1, num2, r, theme }) {
+function LongDivision({ num1, num2, r, theme, answer }) {
   // num1 ÷ num2
   // Walk through digit by digit (simplified for 2-digit ÷ 1-digit or 3-digit ÷ 1-digit)
   const dividendStr = String(num1)
@@ -228,13 +240,14 @@ function LongDivision({ num1, num2, r, theme }) {
     setVisibleStep(0)
     setShowAnswer(false)
 
+    const fast = answer != null
     const timers = []
     for (let i = 1; i <= steps.length; i++) {
-      timers.push(setTimeout(() => setVisibleStep(i), 350 + (i - 1) * 1000))
+      timers.push(setTimeout(() => setVisibleStep(i), fast ? i * 180 : 350 + (i - 1) * 1000))
     }
-    timers.push(setTimeout(() => setShowAnswer(true), 350 + steps.length * 1000 + 400))
+    timers.push(setTimeout(() => setShowAnswer(true), fast ? steps.length * 180 + 150 : 350 + steps.length * 1000 + 400))
     return () => timers.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s  = styles(r)
   const qMarks = '?'.repeat(steps.filter((s, i) => i < visibleStep && s.quotientDigit > 0 || (s.running >= num2 && i < visibleStep)).length) || '?'
@@ -279,11 +292,13 @@ function LongDivision({ num1, num2, r, theme }) {
       </View>
 
       <FadeSlide show={showAnswer}>
-        <View style={[s.finalRow, { borderColor: theme.primary, marginTop: r.sp(8) }]}>
+        <View style={[s.finalRow, { borderColor: answer != null ? '#4CAF50' : theme.primary, marginTop: r.sp(8) }]}>
           <Text style={[s.finalText, { color: theme.text }]}>
             {num1} ÷ {num2} =
           </Text>
-          <Text style={[s.finalQ, { color: theme.primary }]}>  ?</Text>
+          <Text style={[s.finalQ, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+            {'  '}{answer != null ? answer : '?'}
+          </Text>
         </View>
       </FadeSlide>
     </View>
@@ -334,11 +349,11 @@ const styles = (r) => StyleSheet.create({
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export default function DivisionVisual({ num1, num2, difficulty, theme }) {
+export default function DivisionVisual({ num1, num2, difficulty, theme, answer }) {
   const r   = useResponsive()
   const key = `${num1}div${num2}-${difficulty}`
 
-  if (difficulty === 'easy')   return <DealingItems         key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  if (difficulty === 'medium') return <RepeatedSubtraction  key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  return                              <LongDivision         key={key} num1={num1} num2={num2} theme={theme} r={r} />
+  if (difficulty === 'easy')   return <DealingItems         key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  if (difficulty === 'medium') return <RepeatedSubtraction  key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  return                              <LongDivision         key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
 }

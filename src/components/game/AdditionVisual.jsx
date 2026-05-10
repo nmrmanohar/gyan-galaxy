@@ -72,7 +72,7 @@ function FadeSlide({ show, children, style, fromY = 10 }) {
 
 const MAX_ITEMS = 10   // max per group in easy mode
 
-function CountingItems({ num1, num2, theme, r }) {
+function CountingItems({ num1, num2, theme, r, answer }) {
   const items   = THEME_ITEMS[theme.id]
   const extra   = pickExtra(items, num1 + num2)
   const emoji1  = num1 <= 5 ? items.group1 : extra
@@ -99,6 +99,15 @@ function CountingItems({ num1, num2, theme, r }) {
     g2Anims.forEach(a => a.setValue(0))
     slideX.setValue(80)
     slideOp.setValue(0)
+
+    // Revealed mode: show everything immediately
+    if (answer != null) {
+      g1Anims.slice(0, num1).forEach(a => a.setValue(1))
+      g2Anims.slice(0, num2).forEach(a => a.setValue(1))
+      slideX.setValue(0); slideOp.setValue(1)
+      setTimeout(() => setPhase(3), 80)
+      return
+    }
 
     const timers = []
 
@@ -181,11 +190,13 @@ function CountingItems({ num1, num2, theme, r }) {
       </View>
 
       {/* Phase 3: connected question — NO answer shown */}
-      <FadeSlide show={phase >= 3} style={[s.connectedBox, { borderColor: theme.primary }]}>
+      <FadeSlide show={phase >= 3} style={[s.connectedBox, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
         <Text style={s.connectedText}>
-          {num1} {items.units}  +  {num2} {items.units}  =  {'  '}
+          {num1} {items.units}  +  {num2} {items.units}  =
         </Text>
-        <Text style={[s.questionMark, { color: theme.primary }]}>?</Text>
+        <Text style={[s.questionMark, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+          {'  '}{answer != null ? answer : '?'}
+        </Text>
       </FadeSlide>
     </View>
   )
@@ -207,7 +218,7 @@ const easyStyles = (r) => StyleSheet.create({
 
 // ─── MEDIUM: Tens-and-units (answer NOT shown at final step) ─────────────────
 
-function TensUnits({ num1, num2, r, theme }) {
+function TensUnits({ num1, num2, r, theme, answer }) {
   const [step, setStep] = useState(0)
 
   const tens1  = Math.floor(num1 / 10),  units1 = num1 % 10
@@ -219,14 +230,15 @@ function TensUnits({ num1, num2, r, theme }) {
 
   useEffect(() => {
     setStep(0)
+    const fast = answer != null
     const t = [
-      setTimeout(() => setStep(1), 300),
-      setTimeout(() => setStep(2), 1300),
-      setTimeout(() => setStep(3), 2400),
-      setTimeout(() => setStep(4), 3500),
+      setTimeout(() => setStep(1), fast ?  80 : 300),
+      setTimeout(() => setStep(2), fast ? 280 : 1300),
+      setTimeout(() => setStep(3), fast ? 480 : 2400),
+      setTimeout(() => setStep(4), fast ? 680 : 3500),
     ]
     return () => t.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = tuStyles(r)
 
@@ -275,13 +287,15 @@ function TensUnits({ num1, num2, r, theme }) {
           </View>
         </FadeSlide>
 
-        {/* Step 4: final — show the sum expression but leave answer as ? */}
+        {/* Step 4: final — show full answer after kid submits */}
         <FadeSlide show={step >= 4}>
-          <View style={[s.finalRow, { borderColor: theme.primary }]}>
+          <View style={[s.finalRow, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
             <Text style={[s.finalText, { color: theme.text }]}>
               {tSum * 10} + {uWrite} =
             </Text>
-            <Text style={[s.finalQ, { color: theme.primary }]}>  ?</Text>
+            <Text style={[s.finalQ, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+              {'  '}{answer != null ? answer : '?'}
+            </Text>
           </View>
         </FadeSlide>
       </View>
@@ -309,7 +323,7 @@ const tuStyles = (r) => StyleSheet.create({
 
 // ─── HARD: Column addition (answer row stays blank) ───────────────────────────
 
-function ColumnMethod({ num1, num2, r, theme }) {
+function ColumnMethod({ num1, num2, r, theme, answer }) {
   const [step, setStep] = useState(0)
 
   const u1 = num1 % 10,              u2 = num2 % 10
@@ -322,16 +336,22 @@ function ColumnMethod({ num1, num2, r, theme }) {
   const tWrite = tSum % 10,  tCarry = Math.floor(tSum/10)
   const hasH   = h1 > 0 || h2 > 0 || tCarry > 0
 
+  // Pre-compute answer digits for the answer row
+  const ansU = answer != null ? answer % 10 : null
+  const ansT = answer != null ? Math.floor(answer / 10) % 10 : null
+  const ansH = answer != null ? Math.floor(answer / 100) : null
+
   useEffect(() => {
     setStep(0)
+    const fast = answer != null
     const t = [
-      setTimeout(() => setStep(1), 350),
-      setTimeout(() => setStep(2), 1200),
-      setTimeout(() => setStep(3), 2400),
-      hasH ? setTimeout(() => setStep(4), 3500) : null,
+      setTimeout(() => setStep(1), fast ?  80 : 350),
+      setTimeout(() => setStep(2), fast ? 280 : 1200),
+      setTimeout(() => setStep(3), fast ? 480 : 2400),
+      hasH ? setTimeout(() => setStep(4), fast ? 680 : 3500) : null,
     ].filter(Boolean)
     return () => t.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = colStyles(r)
 
@@ -366,11 +386,19 @@ function ColumnMethod({ num1, num2, r, theme }) {
             <Text style={[s.plusSym, { color: theme.primary }]}>+</Text>
             <View style={[s.line, { backgroundColor: theme.primary }]} />
           </View>
-          {/* Answer row — always "?" until kid submits */}
+          {/* Answer row — shows actual digits after kid submits */}
           <View style={s.dRow}>
-            {hasH && <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>}
-            <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
-            <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
+            {hasH && (
+              <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+                {answer != null ? (answer >= 100 ? ansH : ' ') : '?'}
+              </Text>
+            )}
+            <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+              {answer != null ? (answer >= 10 ? ansT : ' ') : '?'}
+            </Text>
+            <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+              {answer != null ? ansU : '?'}
+            </Text>
           </View>
         </View>
       </FadeSlide>
@@ -424,11 +452,11 @@ const colStyles = (r) => StyleSheet.create({
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export default function AdditionVisual({ num1, num2, difficulty, theme }) {
+export default function AdditionVisual({ num1, num2, difficulty, theme, answer }) {
   const r   = useResponsive()
   const key = `${num1}+${num2}+${difficulty}`
 
-  if (difficulty === 'easy')   return <CountingItems key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  if (difficulty === 'medium') return <TensUnits     key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  return                              <ColumnMethod  key={key} num1={num1} num2={num2} theme={theme} r={r} />
+  if (difficulty === 'easy')   return <CountingItems key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  if (difficulty === 'medium') return <TensUnits     key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  return                              <ColumnMethod  key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
 }

@@ -14,7 +14,7 @@ import MultiplicationVisual from '../../../src/components/game/MultiplicationVis
 import DivisionVisual       from '../../../src/components/game/DivisionVisual'
 
 const TOTAL        = 10
-const AUTO_NEXT_MS = 1400
+const AUTO_NEXT_MS = 4500
 
 const CORRECT_MSGS = ['Great! 🎉', 'Correct! ⭐', 'Awesome! 🚀', 'Perfect! 🌟', 'Yes! 🙌']
 const WRONG_MSGS   = ['Not quite!', 'Good try!', 'Keep going!']
@@ -165,42 +165,46 @@ export default function MathGame() {
           </Animated.View>
         </Animated.View>
 
-        {/* Visual teaching — one component per operation */}
-        {levelId === 1 && (
+        {/* Visual teaching — shown AFTER the kid answers, reveals how to work it out */}
+        {isAnswered && levelId === 1 && (
           <View style={s.visualWrap}>
             <AdditionVisual
               num1={question.num1}
               num2={question.num2}
+              answer={question.answer}
               difficulty={question.difficulty}
               theme={theme}
             />
           </View>
         )}
-        {levelId === 2 && (
+        {isAnswered && levelId === 2 && (
           <View style={s.visualWrap}>
             <SubtractionVisual
               num1={question.num1}
               num2={question.num2}
+              answer={question.answer}
               difficulty={question.difficulty}
               theme={theme}
             />
           </View>
         )}
-        {levelId === 3 && (
+        {isAnswered && levelId === 3 && (
           <View style={s.visualWrap}>
             <MultiplicationVisual
               num1={question.num1}
               num2={question.num2}
+              answer={question.answer}
               difficulty={question.difficulty}
               theme={theme}
             />
           </View>
         )}
-        {levelId === 4 && (
+        {isAnswered && levelId === 4 && (
           <View style={s.visualWrap}>
             <DivisionVisual
               num1={question.num1}
               num2={question.num2}
+              answer={question.answer}
               difficulty={question.difficulty}
               theme={theme}
             />

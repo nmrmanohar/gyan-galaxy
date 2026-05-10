@@ -49,7 +49,7 @@ function FadeSlide({ show, children, style, fromY = 10 }) {
 
 const MAX = 10
 
-function CrossOutItems({ num1, num2, theme, r }) {
+function CrossOutItems({ num1, num2, theme, r, answer }) {
   const cfg   = THEME_ITEMS[theme.id]
   const emoji = num1 > 5 ? pickEmoji(theme.id, num1) : cfg.emoji
   const sz    = r.font(num1 <= 10 ? 26 : 22)
@@ -70,6 +70,17 @@ function CrossOutItems({ num1, num2, theme, r }) {
     setCrossedOut(false)
     scales.forEach(a => a.setValue(0))
     opacities.forEach(a => a.setValue(1))
+
+    // Revealed mode: show final state immediately
+    if (answer != null) {
+      const removeStart = num1 - num2
+      scales.slice(0, removeStart).forEach(a => a.setValue(1))
+      scales.slice(removeStart, num1).forEach(a => a.setValue(0.2))
+      opacities.slice(removeStart, num1).forEach(a => a.setValue(0.2))
+      setCrossedOut(true)
+      setTimeout(() => setPhase(3), 80)
+      return
+    }
 
     const timers = []
 
@@ -153,11 +164,13 @@ function CrossOutItems({ num1, num2, theme, r }) {
       </FadeSlide>
 
       <FadeSlide show={phase >= 3}>
-        <View style={[s.resultBox, { borderColor: theme.primary }]}>
+        <View style={[s.resultBox, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
           <Text style={s.resultText}>
             {num1} − {num2}  =
           </Text>
-          <Text style={[s.questionMark, { color: theme.primary }]}>  ?</Text>
+          <Text style={[s.questionMark, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+            {'  '}{answer != null ? answer : '?'}
+          </Text>
         </View>
       </FadeSlide>
     </View>
@@ -166,7 +179,7 @@ function CrossOutItems({ num1, num2, theme, r }) {
 
 // ─── MEDIUM: tens-units with borrowing ───────────────────────────────────────
 
-function TensUnits({ num1, num2, r, theme }) {
+function TensUnits({ num1, num2, r, theme, answer }) {
   const [step, setStep] = useState(0)
 
   const t1 = Math.floor(num1 / 10), u1 = num1 % 10
@@ -181,16 +194,15 @@ function TensUnits({ num1, num2, r, theme }) {
 
   useEffect(() => {
     setStep(0)
+    const fast = answer != null
     const t = [
-      setTimeout(() => setStep(1), 300),
-      setTimeout(() => setStep(2), 1300),
-      needBorrow
-        ? setTimeout(() => setStep(3), 2300)
-        : null,
-      setTimeout(() => setStep(needBorrow ? 4 : 3), needBorrow ? 3300 : 2300),
+      setTimeout(() => setStep(1), fast ?  80 : 300),
+      setTimeout(() => setStep(2), fast ? 280 : 1300),
+      needBorrow ? setTimeout(() => setStep(3), fast ? 480 : 2300) : null,
+      setTimeout(() => setStep(needBorrow ? 4 : 3), fast ? (needBorrow ? 680 : 480) : (needBorrow ? 3300 : 2300)),
     ].filter(Boolean)
     return () => t.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = styles(r)
 
@@ -251,13 +263,15 @@ function TensUnits({ num1, num2, r, theme }) {
           </View>
         </FadeSlide>
 
-        {/* Final — leave as ? */}
+        {/* Final — shows answer after kid submits */}
         <FadeSlide show={step >= (needBorrow ? 4 : 3)}>
-          <View style={[s.finalRow, { borderColor: theme.primary }]}>
+          <View style={[s.finalRow, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
             <Text style={[s.finalText, { color: theme.text }]}>
               {tAns*10} + {uAns} =
             </Text>
-            <Text style={[s.finalQ, { color: theme.primary }]}>  ?</Text>
+            <Text style={[s.finalQ, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+              {'  '}{answer != null ? answer : '?'}
+            </Text>
           </View>
         </FadeSlide>
       </View>
@@ -267,7 +281,7 @@ function TensUnits({ num1, num2, r, theme }) {
 
 // ─── HARD: column subtraction with borrowing ─────────────────────────────────
 
-function ColumnMethod({ num1, num2, r, theme }) {
+function ColumnMethod({ num1, num2, r, theme, answer }) {
   const [step, setStep] = useState(0)
 
   const u1 = num1 % 10,              u2 = num2 % 10
@@ -282,16 +296,21 @@ function ColumnMethod({ num1, num2, r, theme }) {
   const adj_h1  = tBorrow ? h1 - 1 : h1
   const hasH    = h1 > 0 || h2 > 0
 
+  const ansU = answer != null ? answer % 10 : null
+  const ansT = answer != null ? Math.floor(answer / 10) % 10 : null
+  const ansH = answer != null ? Math.floor(answer / 100) : null
+
   useEffect(() => {
     setStep(0)
+    const fast = answer != null
     const t = [
-      setTimeout(() => setStep(1), 350),
-      setTimeout(() => setStep(2), 1200),
-      setTimeout(() => setStep(3), 2400),
-      hasH ? setTimeout(() => setStep(4), 3500) : null,
+      setTimeout(() => setStep(1), fast ?  80 : 350),
+      setTimeout(() => setStep(2), fast ? 280 : 1200),
+      setTimeout(() => setStep(3), fast ? 480 : 2400),
+      hasH ? setTimeout(() => setStep(4), fast ? 680 : 3500) : null,
     ].filter(Boolean)
     return () => t.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = styles(r)
   const hl = (active) => active ? { backgroundColor: `${theme.primary}25`, borderRadius: r.sp(4) } : {}
@@ -325,11 +344,19 @@ function ColumnMethod({ num1, num2, r, theme }) {
             <Text style={[s.minusSym, { color: theme.primary }]}>−</Text>
             <View style={[s.line, { backgroundColor: theme.primary }]} />
           </View>
-          {/* Answer — always ? */}
+          {/* Answer row — shows actual digits after kid submits */}
           <View style={s.dRow}>
-            {hasH && <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>}
-            <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
-            <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
+            {hasH && (
+              <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+                {answer != null ? (answer >= 100 ? ansH : ' ') : '?'}
+              </Text>
+            )}
+            <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+              {answer != null ? (answer >= 10 ? ansT : ' ') : '?'}
+            </Text>
+            <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+              {answer != null ? ansU : '?'}
+            </Text>
           </View>
         </View>
       </FadeSlide>
@@ -421,11 +448,11 @@ const styles = (r) => StyleSheet.create({
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export default function SubtractionVisual({ num1, num2, difficulty, theme }) {
+export default function SubtractionVisual({ num1, num2, difficulty, theme, answer }) {
   const r   = useResponsive()
   const key = `${num1}-${num2}-${difficulty}`
 
-  if (difficulty === 'easy')   return <CrossOutItems key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  if (difficulty === 'medium') return <TensUnits     key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  return                              <ColumnMethod  key={key} num1={num1} num2={num2} theme={theme} r={r} />
+  if (difficulty === 'easy')   return <CrossOutItems key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  if (difficulty === 'medium') return <TensUnits     key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  return                              <ColumnMethod  key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
 }

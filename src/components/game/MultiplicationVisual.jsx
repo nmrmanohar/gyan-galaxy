@@ -42,7 +42,7 @@ function FadeSlide({ show, children, style, fromY = 10 }) {
 // ─── EASY: array model ────────────────────────────────────────────────────────
 // Shows num1 rows of num2 items, rows appear one by one
 
-function ArrayModel({ num1, num2, theme, r }) {
+function ArrayModel({ num1, num2, theme, r, answer }) {
   const cfg   = THEME_ITEMS[theme.id]
   // Use overflow emoji for larger numbers to keep items small
   const emoji = num2 > 5 ? pickEmoji(theme.id, num1 + num2) : cfg.emoji
@@ -58,6 +58,14 @@ function ArrayModel({ num1, num2, theme, r }) {
     setVisibleRows(0)
     setShowLabel(false)
 
+    // Revealed mode: show all rows immediately
+    if (answer != null) {
+      rowAnims.slice(0, num1).forEach(a => a.setValue(1))
+      setVisibleRows(num1)
+      setTimeout(() => setShowLabel(true), 80)
+      return
+    }
+
     const timers = []
     // Pop each row in, 600ms apart
     for (let i = 0; i < num1; i++) {
@@ -69,7 +77,7 @@ function ArrayModel({ num1, num2, theme, r }) {
     // Show label after all rows
     timers.push(setTimeout(() => setShowLabel(true), 300 + num1 * 550 + 400))
     return () => timers.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = styles(r)
 
@@ -101,11 +109,13 @@ function ArrayModel({ num1, num2, theme, r }) {
       </View>
 
       <FadeSlide show={showLabel}>
-        <View style={[s.labelBox, { borderColor: theme.primary }]}>
+        <View style={[s.labelBox, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
           <Text style={s.labelText}>
             {num1} groups  ×  {num2} {cfg.units}  =
           </Text>
-          <Text style={[s.qMark, { color: theme.primary }]}>  ?</Text>
+          <Text style={[s.qMark, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+            {'  '}{answer != null ? answer : '?'}
+          </Text>
         </View>
       </FadeSlide>
     </View>
@@ -115,7 +125,7 @@ function ArrayModel({ num1, num2, theme, r }) {
 // ─── MEDIUM: split-5 method ───────────────────────────────────────────────────
 // Break the larger factor: e.g. 7×8 = 7×5 + 7×3 = 35 + 21 = ?
 
-function SplitFive({ num1, num2, r, theme }) {
+function SplitFive({ num1, num2, r, theme, answer }) {
   // Always split num2 (the second factor) if > 5
   // If num2 <= 5, split num1
   const [big, small] = num2 > 5 ? [num1, num2] : [num2, num1]
@@ -127,14 +137,15 @@ function SplitFive({ num1, num2, r, theme }) {
   const [step, setStep] = useState(0)
   useEffect(() => {
     setStep(0)
+    const fast = answer != null
     const t = [
-      setTimeout(() => setStep(1), 300),
-      setTimeout(() => setStep(2), 1300),
-      split2 > 0 ? setTimeout(() => setStep(3), 2300) : null,
-      setTimeout(() => setStep(split2 > 0 ? 4 : 3), split2 > 0 ? 3300 : 2300),
+      setTimeout(() => setStep(1), fast ?  80 : 300),
+      setTimeout(() => setStep(2), fast ? 280 : 1300),
+      split2 > 0 ? setTimeout(() => setStep(3), fast ? 480 : 2300) : null,
+      setTimeout(() => setStep(split2 > 0 ? 4 : 3), fast ? (split2 > 0 ? 680 : 480) : (split2 > 0 ? 3300 : 2300)),
     ].filter(Boolean)
     return () => t.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = styles(r)
 
@@ -182,11 +193,13 @@ function SplitFive({ num1, num2, r, theme }) {
         )}
 
         <FadeSlide show={step >= (split2 > 0 ? 4 : 3)}>
-          <View style={[s.finalRow, { borderColor: theme.primary }]}>
+          <View style={[s.finalRow, { borderColor: answer != null ? '#4CAF50' : theme.primary }]}>
             <Text style={[s.finalText, { color: theme.text }]}>
               {part1}{split2 > 0 ? ` + ${part2}` : ''} =
             </Text>
-            <Text style={[s.finalQ, { color: theme.primary }]}>  ?</Text>
+            <Text style={[s.finalQ, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+              {'  '}{answer != null ? answer : '?'}
+            </Text>
           </View>
         </FadeSlide>
       </View>
@@ -196,24 +209,29 @@ function SplitFive({ num1, num2, r, theme }) {
 
 // ─── HARD: column multiplication ─────────────────────────────────────────────
 
-function ColumnMethod({ num1, num2, r, theme }) {
+function ColumnMethod({ num1, num2, r, theme, answer }) {
   // num1 × num2 where num1 can be 2-digit, num2 is 1 or 2 digit
   // Use standard long multiplication
   const u2    = num2 % 10
   const t2    = Math.floor(num2 / 10)
   const hasT2 = t2 > 0
 
+  const ansU = answer != null ? answer % 10 : null
+  const ansT = answer != null ? Math.floor(answer / 10) % 10 : null
+  const ansH = answer != null ? Math.floor(answer / 100) : null
+
   const [step, setStep] = useState(0)
   useEffect(() => {
     setStep(0)
+    const fast = answer != null
     const t = [
-      setTimeout(() => setStep(1), 350),
-      setTimeout(() => setStep(2), 1200),
-      hasT2 ? setTimeout(() => setStep(3), 2300) : null,
-      setTimeout(() => setStep(hasT2 ? 4 : 3), hasT2 ? 3300 : 2300),
+      setTimeout(() => setStep(1), fast ?  80 : 350),
+      setTimeout(() => setStep(2), fast ? 280 : 1200),
+      hasT2 ? setTimeout(() => setStep(3), fast ? 480 : 2300) : null,
+      setTimeout(() => setStep(hasT2 ? 4 : 3), fast ? (hasT2 ? 680 : 480) : (hasT2 ? 3300 : 2300)),
     ].filter(Boolean)
     return () => t.forEach(clearTimeout)
-  }, [num1, num2])
+  }, [num1, num2, answer])
 
   const s = styles(r)
   const hl = (active) => active ? { backgroundColor: `${theme.primary}25`, borderRadius: r.sp(4) } : {}
@@ -262,12 +280,18 @@ function ColumnMethod({ num1, num2, r, theme }) {
           {hasT2 && step >= 3 && (
             <View style={[s.line, { backgroundColor: '#aaa', marginVertical: r.sp(4) }]} />
           )}
-          {/* Answer — always ? */}
+          {/* Answer row — shows actual digits after kid submits */}
           <FadeSlide show={step >= (hasT2 ? 4 : 3)}>
             <View style={s.dRow}>
-              <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
-              <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
-              <Text style={[s.digit, s.ansDigit, { color: theme.primary }]}>?</Text>
+              <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+                {answer != null ? (answer >= 100 ? ansH : ' ') : '?'}
+              </Text>
+              <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+                {answer != null ? (answer >= 10 ? ansT : ' ') : '?'}
+              </Text>
+              <Text style={[s.digit, s.ansDigit, { color: answer != null ? '#4CAF50' : theme.primary }]}>
+                {answer != null ? ansU : '?'}
+              </Text>
             </View>
           </FadeSlide>
         </View>
@@ -350,11 +374,11 @@ const styles = (r) => StyleSheet.create({
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export default function MultiplicationVisual({ num1, num2, difficulty, theme }) {
+export default function MultiplicationVisual({ num1, num2, difficulty, theme, answer }) {
   const r   = useResponsive()
   const key = `${num1}x${num2}-${difficulty}`
 
-  if (difficulty === 'easy')   return <ArrayModel  key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  if (difficulty === 'medium') return <SplitFive   key={key} num1={num1} num2={num2} theme={theme} r={r} />
-  return                              <ColumnMethod key={key} num1={num1} num2={num2} theme={theme} r={r} />
+  if (difficulty === 'easy')   return <ArrayModel  key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  if (difficulty === 'medium') return <SplitFive   key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
+  return                              <ColumnMethod key={key} num1={num1} num2={num2} theme={theme} r={r} answer={answer} />
 }
